@@ -71,44 +71,94 @@
 ### 2. WEB端安装（docker）
 
 * 注意：部署后请开放服务器对应端口才可使用，或者使用反向代理实现域名访问。
-
-    1. 方式一：快速启动（推荐）
-
-    ```
-    git clone https://github.com/iAJue/MoeKoeMusic.git
-    cd MoeKoeMusic
-    docker compose up -d &
-    ```
-
-    2. ~~方式二：使用docker-compose一键安装 （镜像暂未上传官方）~~
-    
-    ```
-    docker run -d --name MoeKoeMusic -p 8080:8080 iajue/moekoe-music:latest
-    ```
-
-    3. 方式三：宝塔容器编排
-
-    * 远程镜像，版本可能会落后于官方
-    
-    ```
-    version: '3.3'
-    
-    services:
-      moekoe-music:
-        # 镜像地址
-        image: registry.cn-wulanchabu.aliyuncs.com/youngxj/moekoe-music:latest
-        container_name: moekoe-music # 容器名
-        restart: unless-stopped # 自动重启
-        build:
-          context: .
-          dockerfile: Dockerfile
-        ports: # 端口映射
-          - "8080:8080"  # 前端服务
-          - "6521:6521"  # 接口服务
-    
-    ```
+* 注意：由于最新版本中不包含相关API的代码，请按照下面步骤执行docker安装
+  1. 拉取KugouAPI代码
+     进入需要存放KuGouAPI代码的路径
+     ```bash
+     cd /root/Kugou_API
+     git clone https://github.com/MakcRe/KuGouMusicApi.git
+     ```
+  2. 拉取MoekoeMusic代码
+     进入需要存放MoekoeMusic代码的路径
+     ```bash
+     cd /root
+     git clone https://github.com/MoeKoeMusic/MoeKoeMusic.git
+     ```
+  3. 将KuGouAPI拷贝到MoekoeMUsic API目录下,并进行配置
+     ```bash
+      cp -r /root/Kugou_API/KuGouMusicApi/. /root/MoeKoeMusic/api/
+      cp /root/MoeKoeMusic/api/.env.example /root/MoeKoeMusic/api/.env 
+      # 修改 platform 和 PORT 
+      sed -i "s/platform=''/platform='lite'/" /root/MoeKoeMusic/api/.env 
+      sed -i "s/PORT=''/PORT='6521'/" /root/MoeKoeMusic/api/.env 
+     ```
+  4. 创建容器
+     ```bash
+     cd /root/MoeKoeMusic
+     docker compose up -d &
+     ```
     
     复制内容上面的内容，粘贴到宝塔面板的容器编排里面，编排名称为MoeKoeMusic，点击部署即可。
+
+  ** 关于后续更新容器，可将下面的代码拷贝到服务器上的Update.sh(需要自己创建)，然后建立更新计划 **
+  ```bash
+        set -e 
+        
+        # 先更新kugou api 
+        cd "/root/Kugou_API/KuGouMusicApi"
+        echo "检查酷狗API是否有更新"
+        
+        #git pull
+        # 记录 pull 前后的 commit ID 
+        OLD_COMMIT=$(git rev-parse HEAD)
+        # 拉取最新代码 
+        git pull --quiet 
+        NEW_COMMIT=$(git rev-parse HEAD)
+        
+        # 是否需要刷新容器标识
+        NEED_REFRESHCONTAINER=0
+        # 判断是否更新 
+        if [ "$OLD_COMMIT" != "$NEW_COMMIT" ]; 
+           then echo "⬆️ 检测到API代码更新：$OLD_COMMIT → $NEW_COMMIT" 
+           cp -r /root/Kugou_API/KuGouMusicApi/. /root/MoeKoeMusic/api/
+        
+           # 自动生成 .env 
+           echo "⚙️ 正在生成 API 配置文件 .env ..." 
+           cp /root/MoeKoeMusic/api/.env.example /root/MoeKoeMusic/api/.env 
+           # 修改 platform 和 PORT 
+           sed -i "s/platform=''/platform='lite'/" /root/MoeKoeMusic/api/.env 
+           sed -i "s/PORT=''/PORT='6521'/" /root/MoeKoeMusic/api/.env 
+           sed -i "s/KUGOU_API_GUID=''/KUGOU_API_GUID='0786de85-c174-44b4-a2fc-6e74595591e9'/" /root/MoeKoeMusic/api/.env 
+           echo "📌 已设置 platform=lite, PORT=6521,API_GUID=0786de85-c174-44b4-a2fc-6e74595591e9"
+        
+           NEED_REFRESHCONTAINER=1
+        fi
+        
+        cd "/root/MoeKoeMusic"
+        
+        echo "🔍 检查本地工程是否有更新..."
+        
+        #git pull
+        # 记录 pull 前后的 commit ID 
+        OLD_COMMIT=$(git rev-parse HEAD)
+        # 拉取最新代码 
+        git pull --quiet 
+        NEW_COMMIT=$(git rev-parse HEAD)
+        
+        # 判断是否更新 
+        if [ "$OLD_COMMIT" = "$NEW_COMMIT" ] && [ "$NEED_REFRESHCONTAINER" = 0 ]; 
+           then echo "✅ 当前已是最新版本，无需更新容器。" 
+           exit 0 
+        fi
+        
+        echo "⬆️ 检测到代码更新：$OLD_COMMIT → $NEW_COMMIT" 
+        echo "🚀 开始更新容器..."
+        
+        docker compose build --no-cache && docker compose up -d --force-recreate && docker image prune -f &
+        
+        echo "🎉 更新完成！"
+
+  ```
 
 ### 3. 一键部署
 [![使用 EdgeOne Pages 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?template=https://github.com/iAJue/moekoemusic&install-command=npm%20install&output-directory=dist&root-directory=.%2F&build-command=npm%20run%20build&env=VITE_APP_API_URL)
